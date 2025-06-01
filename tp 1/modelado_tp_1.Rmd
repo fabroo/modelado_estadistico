@@ -1,0 +1,33 @@
+---
+title: "Modelado estadistico TP 1"
+author: "Alamo, Corzini, Laria"
+date: "2025-05-31"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Ejercicio 1
+
+Procedemos a realizar un Train-Test split convencional.
+
+```{r}
+
+```
+
+## Ejericio 2
+
+La pregunta elegida fue *Q43:	I think a natural disaster would be kind of exciting.*
+
+## Ejercicio 3
+
+Los problemas de usar una regresion lineal consisten fundamentalmente en los supuestos que se consideran al optar por este tipo de modelos. En particular se asume que la variable independiente [Nivel de conformidad] es una combinacion de lineal, en este caso, de la religion con la edad de la persona observada. Esto introduce la posibilidad de que el modelo retorne respuestas como $2,5$ o $\pi$ lo cual no seria optimo para nuestra tarea de clasificacion.
+
+En el caso de la regresion logistica [CHEQUEAR PQ], el modelo establece que las clases a predecir (en nuestro ejemplo {1..5}) no deben poder ser ordenados (es decir establecer un orden jerarquico por asi decirlo), cuando claramente el nivel de conformidad de un usuario tiene esta propiedad. 
+
+
+## Ejercicio 4
+
+Los modelos de regresion ordinal son un tipo de modelo que se usa para clasificar una observacion en un conjunto de clases a las que se le puede asignar (o que naturalmente poseen) un orden relativo significativo.
