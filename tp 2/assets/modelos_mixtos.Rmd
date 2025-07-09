@@ -1,0 +1,152 @@
+---
+title: "modelos_mixtos"
+author: "Gonzalo Chebi"
+date: "28/06/2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+```
+
+
+
+
+```{r}
+#Paquete para la data de radon
+library(rstanarm)
+
+```
+
+
+```{r}
+radon %>% 
+  group_by(county) %>% 
+  summarise(casos = n(), avg = mean(log_radon)) %>% 
+  arrange(casos)
+```
+
+
+```{r}
+## Numero de casos vs. promedio del log radon
+radon %>% 
+  group_by(county) %>% 
+  summarise(cases = n(), mean_log_radon = mean(log_radon)) %>% 
+  ggplot(aes(x=cases, y = mean_log_radon)) +
+  geom_point()
+```
+
+
+
+```{r}
+# Modelo lineal sin intercept con un efecto fijo por county
+fit_1 = lm(log_radon ~ county - 1, data = radon)
+
+fit_1 %>% summary()
+```
+
+```{r}
+help(radon)
+```
+
+
+```{r}
+# Modelo lineal sin intercept con un efecto fijo por county y un efecto fijo para floor
+fit_2 = lm(log_radon ~ county - 1 + floor, data = radon)
+fit_2 %>% summary()
+```
+
+```{r}
+# anova de los dos modelos anteriores
+anova(fit_1, fit_2)
+```
+
+
+```{r}
+library(lme4)
+# Modelo mixto con intercept fijo + un efecto aleatorio por county
+fit_3 = lmer(log_radon ~ (1 | county), data = radon)
+fit_3 %>% summary()
+```
+
+```{r}
+# Prediccion de los efectos aleatorios por county
+ranef(fit_3)
+```
+
+
+```{r}
+# Modelo mixto con intercept y pendiente de floor fijas + intercepts aleatorios por county
+fit_4 = lmer(log_radon ~ floor + (1 | county), data = radon)
+fit_4 %>% summary()
+```
+
+
+```{r}
+0.099 / (0.099 + 0.527) ## Intra cluster correlation
+```
+
+
+```{r}
+# Modelo mixto con intercept y pendiente de floor fijas + intercepts y pendientes de floor aleatorios por county
+fit_5 = lmer(log_radon ~ floor + (1 + floor | county), data = radon)
+fit_5 %>% summary()
+```
+```{r}
+# Modelo mixto con intercept y pendientes de floor log_uranium fijas + intercepts y pendientes de floor aleatorios por county
+
+fit_6 = lmer(log_radon ~ floor + log_uranium + (1 + floor | county), data = radon)
+fit_6 %>% summary()
+```
+```{r}
+# anova para todos los modelos mixtos
+anova(fit_3, fit_4, fit_5, fit_6)
+```
+
+```{r}
+# Obtengo el vector del numero de casos
+radon_num_cases = radon %>% 
+  group_by(county) %>% 
+  summarise(num_cases = n()) %>% 
+  pull(num_cases)
+```
+
+```{r}
+ranef(fit_3)
+```
+
+
+```{r}
+# Obtengo intercepts aleatorios con fit_3
+lmm_intercepts = ranef(fit_3)[['county']][,1] + fixef(fit_3)[['(Intercept)']]
+
+# Obtengo intercepts fijos con fit_1
+fixed_intercepts = as.array(fit_1$coefficients)
+
+# Grafico efectos fijos vs efectos aleatorios, incluyendo el tamano de muestra como size
+tibble(lmm = lmm_intercepts, fixed = fixed_intercepts, num_cases = radon_num_cases) %>%
+  mutate(rn = row_number()) %>% 
+  pivot_longer(c(fixed, lmm)) %>% 
+  ggplot(aes(x = rn, y = value, color = name)) +
+  geom_point(aes(size = num_cases), alpha = 0.5) +
+  theme_bw()
+```
+
+
+```{r}
+# Los modelos de efectos fijos son incapaces de predecir una nueva categoria
+predict(fit_1, newdata = data.frame(county = 'HOLA'))
+```
+```{r}
+# Los modelos de efectos aleatorios son capaces de predecir una nueva categoria
+predict(fit_5, newdata = data.frame(county = , floor=1), allow.new.levels=T)
+```
+
+
+
+
+
+ 
+

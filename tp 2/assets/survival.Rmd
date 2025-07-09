@@ -1,0 +1,64 @@
+---
+title: "survival"
+output: html_document
+date: "2025-06-"28
+---
+```{r}
+library(carData)
+library(tidyverse)
+library(ggsurvfit)
+library(survival)
+library(survminer)
+```
+
+
+```{r}
+Rossi
+```
+
+```{r}
+survfit(Surv(week, arrest) ~ 1, data=Rossi) %>% 
+    ggsurvfit() 
+```
+
+```{r}
+sf = survfit(Surv(week, arrest) ~ fin, data = Rossi)
+ggsurvplot(sf, data=Rossi)
+```
+
+
+
+```{r}
+mod = coxph(Surv(week, arrest) ~fin, data=Rossi)
+ggsurvplot(
+  survfit(
+    mod,
+    newdata = tibble(fin=c('yes','no')),
+    data=Rossi),
+  legend.labs = c("Financial Aid", "No Financial Aid"))
+```
+
+```{r}
+summary(mod)
+```
+
+
+
+```{r}
+mod_2 = coxph(Surv(week, arrest)~ age + fin, data=Rossi)
+anova(mod, mod_2)
+```
+
+
+
+```{r}
+colnames(Rossi)
+```
+```{r}
+mod_all = coxph(Surv(week, arrest)~ age + fin + race + wexp + mar + paro + prio + educ, data=Rossi)
+summary(mod_all)
+```
+
+
+
+
