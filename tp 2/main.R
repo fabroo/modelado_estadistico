@@ -4,9 +4,14 @@ require(purrr)
 library(dplyr)
 require(lme4)
 library(stringr)
+library(splines)
+library(mgcv)
 
 path <- 'Documents/uba/modelado_estadistico/'
 titles_train <- read.csv(paste(path,'titles_train.csv', sep = ''))
+
+nrow(titles_train %>% filter(str_detect(production_countries, 'LK')))
+
 
 # ejercicio 2a
 
@@ -19,11 +24,11 @@ country_score_df <- titles_train %>%
   mutate(w = 1 / n()) %>% 
   ungroup() %>% 
   pivot_wider(
-    id_cols     = c(imdb_id, imdb_score),  # the two columns that uniquely ID a film
-    names_from  = country,                 # one column per country code
-    values_from = w,                       # numbers, not lists
-    values_fn   = sum,                     # sums duplicates -> single numeric
-    values_fill = 0                        # 0 for countries a film lacks
+    id_cols     = c(imdb_id, imdb_score),
+    names_from  = country,
+    values_from = w,
+    values_fn   = sum,
+    values_fill = 0
   ) %>% 
   select(-imdb_id)
 
@@ -76,19 +81,40 @@ plot_df <- full_join(fe_df, re_df, by = "country") |>
                         mean_fe = "Fijos",
                         mean_re = "Aleatorios"))
 
-ggplot(plot_df,
-       aes(mean,
+countries <- unique(plot_df$country)
+counts_country <- tibble(country = countries) %>%
+  mutate(
+    n_titles = map_int(country, ~ 
+                         titles_train %>% 
+                         filter(str_detect(production_countries, fixed(.x))) %>% 
+                         nrow()
+    )
+  )
+
+plot_with_countries <- plot_df %>%
+  left_join(counts_country, by = "country")
+
+
+ggplot(plot_df2,
+       aes(x = mean,
            y = reorder(country, order_fe),
            colour = model,
-           shape  = model)) +
-  geom_point(position = position_dodge(width = .3), size = 2) +
+           shape  = model,
+           size   = n_titles)) +
+  geom_point(position = position_dodge(width = .3)) +
   geom_vline(xintercept = mu, linetype = "dashed") +
+  scale_size_continuous(name = "Nº títulos", range = c(1, 5)) +
   labs(x = "Puntaje IMDb promedio estimado",
        y = NULL,
        colour = "Modelo",
        shape  = "Modelo",
        title = "Efectos de país: fijo vs. aleatorio") +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    axis.text.y  = element_text(size = 6),
+    axis.ticks.y = element_blank(),
+    plot.margin  = margin(5, 5, 5, 40)
+  )
 
 
 # ejercicio 3
@@ -114,8 +140,6 @@ ggplot(popularity_df,
 mas_populares <- popularity_df %>% filter(imdb_votes > 1000000)
 mas_populares
 
-library(splines)
-
 ks <- c(1,2,3,5,10,20, 48,50)
 year_grid <- seq(min(popularity_df$release_year),
                  max(popularity_df$release_year), length.out = 300)
@@ -134,22 +158,121 @@ ggplot(popularity_df, aes(release_year, imdb_votes)) +
   geom_point(colour="grey60", alpha=.5, size=.7) +
   geom_line(data=pred_df, aes(y=pred, colour=k), linewidth=1) +
   scale_colour_viridis_d(name="k") +
-  coord_cartesian(ylim = c(0, 1.5e6)) +
+  coord_cartesian(ylim = c(0, 1.e6)) +
   labs(x="Año de estreno", y="Votos en IMDb") +
   theme_minimal()
 
 
 # ejericio 4
-# https://documentation.sas.com/doc/en/statug/15.2/statug_causalgraph_details02.htm
+# hecho en el informe
 
-# Dado el DAG de causalidad, vemos que el nodo Pais apunta a Comedia por lo que podria estar interfiriendo en la relacion causal
-# Esto lo podemos interpretar como: depende el pais, el nivel de comedia puede ser mayor o menor y esto influiria en el Score.
-# Pero entonces vemos que el Pais seria condicionante (luego si condicionamos por pais ya podriamos estimar el efecto causal).
 
-# Demo:
+# ejercicio 5
 
-# For a set of treatment variables X and a set of outcome variables Y, a set of observed variables Z is a valid adjustment set if all the following conditions are present:
+names(titles_train)
+titles_train
 
-# 1.  Z = {pais} bloquea TODOS los caminos no-causales de X a Y [solo hay 1 que es pais -> comedia -> score]
-# 2. para todo z en Z, z no pertenece o desciende de un camino causal de X a Y
-# 3. ningun z en Z desciende de alguna variable de un camino causal (pais es confounder asi que no desciende de nada)
+unique(titles_train$genres)
+
+age_cert_significativos <- c("G", "PG", "PG-13", "R", "TV-G", "TV-PG")
+generos_significativos <- c("action", "animation", "comedy", "documentation",
+                   "drama", "horror", "romance", "scifi", "thriller")
+nice_df <- titles_train %>% 
+  mutate(
+    age_certification = if_else(age_certification %in% age_cert_significativos,
+                                age_certification, "other"),
+    genres_clean      = str_replace_all(genres, "\\[|\\]|'", "") %>% str_squish()
+  ) %>% 
+  mutate(
+    !!! set_names(
+      lapply(generos_significativos, function(g)
+        expr(str_detect(genres_clean, !!paste0("\\b", g, "\\b")))
+      ),
+      paste0("is_", generos_significativos)
+    )
+  ) %>% 
+  filter(imdb_votes < 1000000) %>%
+  mutate(
+  pc_clean = str_remove_all(production_countries, "\\[|\\]|'") %>% 
+    str_squish(),
+  primary_pc = str_extract(pc_clean, "^[A-Z]{2}")
+  ) %>% 
+  mutate(
+    primary_pc = fct_lump_n(primary_pc, n = 10, other_level = "OTHER")
+  )
+
+unique(nice_df$primary_pc)
+
+# PRIMER MODELO
+candidate_1 <- lm(imdb_score ~ 
+                    log1p(imdb_votes)
+                  + runtime
+                  + release_year
+                  + type
+                  + is_action        
+                  + is_animation     
+                  + is_comedy        
+                  + is_documentation 
+                  + is_drama         
+                  + is_horror        
+                  + is_romance       
+                  + is_scifi         
+                  + is_thriller  
+                  + primary_pc
+                  + age_certification, data = nice_df)
+
+summary(candidate_1)
+
+mse_1 <- mean(resid(candidate_1)^2)
+mse1
+
+# SEGUNDO MODELO
+fixed  <- "log1p(imdb_votes) + runtime + (1 + log1p(imdb_votes) | primary_pc) + (1|release_year)"
+fixed2 <- paste0(fixed,
+                 " + is_action + is_animation + is_comedy + is_documentation",
+                 " + is_drama + is_horror + is_romance + is_scifi + is_thriller",
+                 " + age_certification")
+
+candidate_2 <- lmer(
+  formula = as.formula(paste("imdb_score ~", fixed2)),
+  data    = nice_df,
+  REML    = TRUE
+)
+summary(candidate_2)
+
+mse_2 <- mean(resid(candidate_2)^2)
+mse_2
+
+# TERCER MODELO
+
+# Generative Additive Model con k=20 spline on release_year
+candidate_3 <- gam(
+  imdb_score ~ s(log1p(imdb_votes), k = 30)
+  + s(runtime,           k = 10) +
+  + s(release_year, k = 30)
+  + type
+  + is_action + is_animation + is_comedy + is_documentation
+  + is_drama  + is_horror    + is_romance     + is_scifi 
+  + is_thriller
+  + primary_pc
+  + age_certification,
+  data   = nice_df,
+  method = "REML"
+)
+
+summary(candidate_3)
+
+mse_3 <- mean(residuals(candidate_3)^2)
+mse_3
+
+my_list <- list(
+  row1 = c("Modelo 1 (lm FE)", "RE Model",    "Splines"),
+  row2 = c(              mse_1,        mse_2,        mse_3)
+)
+
+print(my_list)
+
+
+
+
+
