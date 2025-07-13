@@ -3,10 +3,10 @@ title:  "Informe TP 2"
 subtitle: "Modelado Estadistico"
 author: |
   **Integrantes del equipo**  
-  - Alamo, Malena (/21)  
+  - Alamo, Malena (1620/21)  
   - Corzini, Fabrizio (32/22)  
-  - Laria, Jeremias (/21)
-date: "10 /07 /2025"
+  - Laria, Jeremias (1329/21)
+date: "13 /07 /2025"
 output:
   html_document: default
 header-includes:
@@ -16,7 +16,58 @@ header-includes:
 
 ## Consigna 1
 
-> *a completar al final porque es opcional*
+En el análisis incluimos los puntajes promedios por género, las palabras asociadas a puntajes más altos/bajos, los países con más/menos cantidad de peliculas y la distribución de los puntajes.
+
+![](puntaje_promedio_genre.png)
+```{r, echo=FALSE}
+library(knitr)
+
+word_scores_hardcoded <- data.frame(
+  word = c("monty", "python", "age", "table", "twenty", 
+           "heaven", "earth", "tokyo", "jim", "miss"),
+  mean_score = c(8.06, 8.05, 7.95, 7.88, 7.88, 7.8, 7.65, 7.6, 7.57, 7.55)
+)
+
+kable(word_scores_hardcoded, caption = "Palabras asociadas con mayor puntaje promedio")
+```
+
+```{r, echo=FALSE}
+library(knitr)
+
+word_scores_low <- data.frame(
+  word = c("monsters", "holiday", "wave", "journey", "african",
+           "hard", "mr", "kill", "dance", "main"),
+  mean_score = c(5.58, 5.54, 5.53, 5.45, 5.43, 5.4, 5.26, 5.2, 5.04, 4.83)
+)
+
+kable(word_scores_low, caption = "Palabras asociadas con menor puntaje promedio")
+```
+
+```{r, echo=FALSE}
+library(knitr)
+
+top_5 <- data.frame(
+  País = c("Estados Unidos", "India", "Reino Unido", "Japón", "Francia"),
+  `Cantidad de películas` = c(1611, 432, 261, 203, 174)
+)
+
+kable(top_5, caption='Paises con más peliculas')
+```
+
+```{r, echo=FALSE}
+library(knitr)
+
+one_movie <- data.frame(
+  País = c("Afganistán", "Albania", "Burkina Faso", "Bahamas", 
+           "República Democrática del Congo", "Chipre", "Groenlandia", 
+           "Guatemala", "Croacia", "Irak"),
+  `Cantidad de películas` = rep(1, 10)
+)
+
+kable(one_movie, caption='Paises con una sola película')
+```
+
+![](distribucion_puntajes.png)
 
 ------------------------------------------------------------------------
 
@@ -44,11 +95,11 @@ lmer(imdb_score ~ 1 + (1 | country), data = df, weights = w)
 
 ![](estimaciones.png)
 
-Por lo general, dada la naturaleza de ambos modelos (efectos fijos y aleatorios), es de esperar que las medias varien. ¿En qué sentido? Si un país produjo pocas películas, bajo el modelo de efectos fijos, la media del modelo en general va a pesar mas que la media de ese país, mientras que si un país produjo varias peliculas, este promedio va a ponderar mas que el del modelo.
+Dada la naturaleza de ambos modelos (efectos fijos y aleatorios), es de esperar que los promedios estimados varien. Si un país produjo pocas películas, bajo el modelo de efectos aleatorios, la estimación se verá más influida por la media general que por la media específica del país. En cambio, para el modelo de efectos fijos, la estimación para cada país se basa directamente en el promedio observado del mismo, sin considerar la cantidad de datos disponibles.
 
 Cuando comparamos, por ejemplo, Sri Lanka (LK) con solo una película en el conjunto:
 
-El modelo de efectos fijos (triángulo) asigna exactamente el rating de esa única peli, quedando muy alejado de la media global.
+El modelo de efectos fijos (triángulo) asigna exactamente el rating de esa única pelicula, quedando muy alejado de la media global.
 
 El modelo de efectos aleatorios (círculo) achica esa estimación hacia la media global (línea punteada), pues reconoce que con tan poca información es peligroso confiar plenamente en un valor extremo.
 
@@ -136,6 +187,20 @@ Finalmente basta con condicionar a **Score** por Pais o por Pais y año. Intuiti
 
 > *Dividir al conjunto de datos en entrenamiento y testeo (tambien puede usar otra técnica, como validación cruzada). Con todas las variables que tiene disponibles, probar al menos 3 modelos diferentes y elegir el que minimice el error cuadrático médio de predicción para el rating de IMDB.*
 
+```{r, echo=FALSE}
+my_list <- list(
+  row1 = c("Efectos Fijos", "Efectos Aleatorios", "Splines"),
+  row2 = c(0.8904226, 0.9245270, 0.8276340)
+)
+
+df <- data.frame(
+  Modelo = my_list$row1,
+  MSE = my_list$row2
+)
+
+knitr::kable(df, caption = "MSE de los modelos evaluados")
+
+```
 ------------------------------------------------------------------------
 
 ## Consigna 6

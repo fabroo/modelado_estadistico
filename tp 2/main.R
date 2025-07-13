@@ -3,15 +3,111 @@ library(tidyr)
 require(purrr)
 library(dplyr)
 require(lme4)
+library(lme4)
 library(stringr)
 library(splines)
 library(mgcv)
+library(broom)
+library(ggplot2)
 
-path <- 'Documents/uba/modelado_estadistico/'
+library(tidytext)
+library(stopwords)
+
+set.seed(42)
+
+path <- ''
 titles_train <- read.csv(paste(path,'titles_train.csv', sep = ''))
 
 nrow(titles_train %>% filter(str_detect(production_countries, 'LK')))
 
+# EJERCICIO 1 ==================================================================
+
+df_genres <- titles_train %>%
+  mutate(genres = str_remove_all(genres, "\\[|\\]|'")) %>%
+  separate_rows(genres, sep = ",\\s*") %>%
+  filter(genres != "")
+
+# Puntaje promedio por género -------------------------------------------------
+genre_scores <- df_genres %>%
+  group_by(genres) %>%
+  summarise(mean_score = mean(imdb_score, na.rm = TRUE),
+            n = n()) %>%
+  arrange(desc(mean_score))
+
+# Mostrar géneros con mayor puntaje promedio
+genre_scores %>% filter(n >= 10) %>% head(10)
+
+ggplot(genre_scores %>% filter(n >= 10), aes(x = reorder(genres, mean_score), y = mean_score)) +
+  geom_col(fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Puntaje IMDb promedio por género (con al menos 10 títulos)",
+       x = "Género",
+       y = "Puntaje promedio") +
+  theme_minimal()
+
+
+# Palabras asociacas a mayor/menor puntaje ---------------------------------------
+
+title_words <- titles_train %>%
+  unnest_tokens(word, title) %>%
+  filter(!word %in% stopwords::stopwords("en")) 
+
+# Promedio de puntaje por palabra
+word_scores <- title_words %>%
+  group_by(word) %>%
+  summarise(mean_score = mean(imdb_score, na.rm = TRUE),
+            n = n()) %>%
+  filter(n >= 5) %>%  # Filtrar palabras que aparecen en al menos 5 títulos
+  arrange(desc(mean_score))
+
+# Palabras con mayor puntaje promedio
+word_scores %>%
+  select(word, mean_score) %>%
+  head(10)
+
+# Palabras con menor puntaje promedio
+word_scores %>%
+  select(word, mean_score) %>%
+  tail(10)
+
+# Cantidad de peliculas por pais -----------------------------------
+
+df_countries <- titles_train %>%
+  mutate(
+    country = str_remove_all(production_countries, "\\[|\\]|'") 
+  ) %>%
+  separate_rows(country, sep = ",\\s*") %>%
+  filter(country != "") %>%
+  group_by(country) %>%
+  summarise(n_movies = n()) %>%
+  arrange(desc(n_movies))
+
+top_5 <- df_countries %>%
+  arrange(desc(n_movies)) %>%
+  slice_head(n = 5)
+
+countries_1 <- df_countries %>%
+  filter(n_movies ==1)
+
+cat("### Top 5 países con más películas\n")
+print(top_5)
+
+cat("\n\n### 5 países con menos películas\n")
+print(countries_1)
+
+# Distribucion de los puntajes ------------------------------------
+
+ggplot(titles_train, aes(x = imdb_score)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Distribución del puntaje IMDb",
+       x = "Puntaje",
+       y = "Cantidad de películas") +
+  theme_minimal()
+
+
+
+
+# EJERCICIO 2 ==================================================================
 
 # ejercicio 2a
 
@@ -95,7 +191,7 @@ plot_with_countries <- plot_df %>%
   left_join(counts_country, by = "country")
 
 
-ggplot(plot_df2,
+ggplot(plot_with_countries,
        aes(x = mean,
            y = reorder(country, order_fe),
            colour = model,
@@ -117,7 +213,8 @@ ggplot(plot_df2,
   )
 
 
-# ejercicio 3
+
+# EJERCICIO 3 ==================================================================
 # considero la popularidad como la cantidad de votos que tiene y no los votos
 popularity_df <- titles_train %>% 
   mutate(imdb_votes = as.numeric(imdb_votes)) %>%
@@ -163,43 +260,64 @@ ggplot(popularity_df, aes(release_year, imdb_votes)) +
   theme_minimal()
 
 
-# ejericio 4
+# EJERCICIO 4 ==================================================================
 # hecho en el informe
 
 
-# ejercicio 5
+# EJERCICIO 5 ==================================================================
 
 names(titles_train)
 titles_train
 
 unique(titles_train$genres)
 
-age_cert_significativos <- c("G", "PG", "PG-13", "R", "TV-G", "TV-PG")
-generos_significativos <- c("action", "animation", "comedy", "documentation",
-                   "drama", "horror", "romance", "scifi", "thriller")
-nice_df <- titles_train %>% 
-  mutate(
-    age_certification = if_else(age_certification %in% age_cert_significativos,
-                                age_certification, "other"),
-    genres_clean      = str_replace_all(genres, "\\[|\\]|'", "") %>% str_squish()
-  ) %>% 
-  mutate(
-    !!! set_names(
-      lapply(generos_significativos, function(g)
-        expr(str_detect(genres_clean, !!paste0("\\b", g, "\\b")))
-      ),
-      paste0("is_", generos_significativos)
+map_primary_pc <- function(pais_vector, top_paises) {
+  niveles <- if ("OTHER" %in% top_paises) {
+    top_paises
+  } else {
+    c(top_paises, "OTHER")
+  }
+  
+  pais_vector_mapped <- ifelse(pais_vector %in% top_paises, pais_vector, "OTHER")
+  factor(pais_vector_mapped, levels = niveles)
+}
+
+preprocesar_titles <- function(df, top_paises = NULL) {
+  df <- df %>% 
+    mutate(
+      age_certification = if_else(age_certification %in% age_cert_significativos,
+                                  age_certification, "other"),
+      genres_clean = str_replace_all(genres, "\\[|\\]|'", "") %>% str_squish()
+    ) %>% 
+    mutate(
+      !!! set_names(
+        lapply(generos_significativos, function(g)
+          expr(str_detect(genres_clean, !!paste0("\\b", g, "\\b")))
+        ),
+        paste0("is_", generos_significativos)
+      )
+    ) %>% 
+    filter(imdb_votes < 1000000 | is.na(imdb_votes)) %>%
+    mutate(
+      pc_clean = str_remove_all(production_countries, "\\[|\\]|'") %>% str_squish(),
+      primary_pc_raw = str_extract(pc_clean, "^[A-Z]{2}")
     )
-  ) %>% 
-  filter(imdb_votes < 1000000) %>%
-  mutate(
-  pc_clean = str_remove_all(production_countries, "\\[|\\]|'") %>% 
-    str_squish(),
-  primary_pc = str_extract(pc_clean, "^[A-Z]{2}")
-  ) %>% 
-  mutate(
-    primary_pc = fct_lump_n(primary_pc, n = 10, other_level = "OTHER")
-  )
+  
+  if (is.null(top_paises)) {
+    # Para entrenamiento, agrupo con fct_lump_n
+    df <- df %>%
+      mutate(primary_pc = fct_lump_n(primary_pc_raw, n = 10, other_level = "OTHER"))
+  } else {
+    # Para test, mapeo según niveles fijos
+    df <- df %>%
+      mutate(primary_pc = map_primary_pc(primary_pc_raw, top_paises))
+  }
+  
+  return(df)
+}
+
+
+nice_df <- preprocesar_titles(titles_train)
 
 unique(nice_df$primary_pc)
 
@@ -224,7 +342,7 @@ candidate_1 <- lm(imdb_score ~
 summary(candidate_1)
 
 mse_1 <- mean(resid(candidate_1)^2)
-mse1
+mse_1
 
 # SEGUNDO MODELO
 fixed  <- "log1p(imdb_votes) + runtime + (1 + log1p(imdb_votes) | primary_pc) + (1|release_year)"
@@ -273,6 +391,16 @@ my_list <- list(
 print(my_list)
 
 
+# EJERCICIO 6 ==================================================================
 
+titles_test <- read.csv("titles_test.csv")
 
+niveles_train <- levels(nice_df$primary_pc)
+
+titles_test_df <- preprocesar_titles(titles_test,top_paises = niveles_train)
+
+# Modelo con splines
+pred_gam <- predict(candidate_3, newdata = titles_test_df)
+
+write.table(pred_gam, file = "predicciones.csv", row.names = FALSE, col.names = FALSE, sep = ",")
 
