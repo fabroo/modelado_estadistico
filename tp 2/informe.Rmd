@@ -186,7 +186,7 @@ Finalmente basta con condicionar a **Score** por Pais o por Pais y año. Intuiti
 
 > *Dividir al conjunto de datos en entrenamiento y testeo (tambien puede usar otra técnica, como validación cruzada). Con todas las variables que tiene disponibles, probar al menos 3 modelos diferentes y elegir el que minimice el error cuadrático médio de predicción para el rating de IMDB.*
 
-Para este ejercicio, agregamos 2 columnas con informacion del dataset de actores: cantidad de actores y cantidad de directores.
+Para este ejercicio, utilizamos las siguientes variables: logaritmo de votos, duración, año de estreno, tipo de título, género (dummies), país de producción principal, clasificación por edad, y la cantidad de actores y directores.
 
 Luego, dividimos los datos en un conjunto de entrenamiento (80% de los datos) y otro de validacion (20% restante).
 
