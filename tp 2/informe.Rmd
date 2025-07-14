@@ -1,17 +1,15 @@
 ---
-title:  "Informe TP 2"
-subtitle: "Modelado Estadistico"
-author: |
-  **Integrantes del equipo**  
-  - Alamo, Malena (1620/21)  
-  - Corzini, Fabrizio (32/22)  
-  - Laria, Jeremias (1329/21)
+title: "Informe TP 2"
+author: "**Integrantes del equipo**  \n- Alamo, Malena (1620/21)  \n- Corzini, Fabrizio
+  (32/22)  \n- Laria, Jeremias (1329/21)\n"
 date: "13 /07 /2025"
 output:
   html_document: default
+  pdf_document: default
+subtitle: Modelado Estadistico
 header-includes:
-  - \usepackage{tikz}
-  - \usetikzlibrary{arrows.meta, positioning}
+- \usepackage{tikz}
+- \usetikzlibrary{arrows.meta, positioning}
 ---
 
 ## Consigna 1
@@ -19,6 +17,7 @@ header-includes:
 En el análisis incluimos los puntajes promedios por género, las palabras asociadas a puntajes más altos/bajos, los países con más/menos cantidad de peliculas y la distribución de los puntajes.
 
 ![](puntaje_promedio_genre.png)
+
 ```{r, echo=FALSE}
 library(knitr)
 
@@ -187,10 +186,22 @@ Finalmente basta con condicionar a **Score** por Pais o por Pais y año. Intuiti
 
 > *Dividir al conjunto de datos en entrenamiento y testeo (tambien puede usar otra técnica, como validación cruzada). Con todas las variables que tiene disponibles, probar al menos 3 modelos diferentes y elegir el que minimice el error cuadrático médio de predicción para el rating de IMDB.*
 
+Para este ejercicio, agregamos 2 columnas con informacion del dataset de actores: cantidad de actores y cantidad de directores.
+
+Luego, dividimos los datos en un conjunto de entrenamiento (80% de los datos) y otro de validacion (20% restante).
+
+Finalmente, entrenamos 3 modelos distintos sobre el conjunto de entrenamiento:
+
+1.  Modelo de Efectos Fijos
+2.  Modelo de Efectos Aleatorios
+3.  Modelo GAM (Splines)
+
+Estos son los resultados que obtuvimos:
+
 ```{r, echo=FALSE}
 my_list <- list(
   row1 = c("Efectos Fijos", "Efectos Aleatorios", "Splines"),
-  row2 = c(0.8904226, 0.9245270, 0.8276340)
+  row2 = c(0.8711707, 0.9023391, 0.8099956)
 )
 
 df <- data.frame(
@@ -201,6 +212,7 @@ df <- data.frame(
 knitr::kable(df, caption = "MSE de los modelos evaluados")
 
 ```
+
 ------------------------------------------------------------------------
 
 ## Consigna 6
