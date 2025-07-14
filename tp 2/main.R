@@ -17,6 +17,7 @@ set.seed(42)
 
 path <- ''
 titles_train <- read.csv(paste(path,'titles_train.csv', sep = ''))
+credits_train <- read.csv(paste(path,'credits_train.csv', sep = ''))
 
 nrow(titles_train %>% filter(str_detect(production_countries, 'LK')))
 
@@ -266,10 +267,24 @@ ggplot(popularity_df, aes(release_year, imdb_votes)) +
 
 # EJERCICIO 5 ==================================================================
 
-names(titles_train)
-titles_train
+actor_counts <- credits_train %>%
+  filter(role == "ACTOR") %>%
+  group_by(id) %>%
+  summarise(num_actors = n())
 
-unique(titles_train$genres)
+director_counts <- credits_train %>%
+  filter(role == "DIRECTOR") %>%
+  group_by(id) %>%
+  summarise(num_directors = n())
+
+# Unir todo en un solo dataframe
+master_df_raw <- titles_train %>%
+  left_join(actor_counts, by = "id") %>%
+  left_join(director_counts, by = "id") %>%
+  mutate(
+    num_actors = ifelse(is.na(num_actors), 0, num_actors),
+    num_directors = ifelse(is.na(num_directors), 0, num_directors)
+  )
 
 map_primary_pc <- function(pais_vector, top_paises) {
   niveles <- if ("OTHER" %in% top_paises) {
@@ -282,7 +297,11 @@ map_primary_pc <- function(pais_vector, top_paises) {
   factor(pais_vector_mapped, levels = niveles)
 }
 
-preprocesar_titles <- function(df, top_paises = NULL) {
+age_cert_significativos <- c("G", "PG", "PG-13", "R", "TV-G", "TV-PG")
+generos_significativos <- c("action", "animation", "comedy", "documentation",
+                            "drama", "horror", "romance", "scifi", "thriller")
+
+preprocesar_df <- function(df, top_paises = NULL, valores_imputacion = NULL) {
   df <- df %>% 
     mutate(
       age_certification = if_else(age_certification %in% age_cert_significativos,
@@ -297,6 +316,10 @@ preprocesar_titles <- function(df, top_paises = NULL) {
         paste0("is_", generos_significativos)
       )
     ) %>% 
+    mutate(
+      runtime = ifelse(is.na(runtime), valores_imputacion$runtime, runtime),
+      imdb_votes = ifelse(is.na(imdb_votes), valores_imputacion$imdb_votes, imdb_votes)
+    ) %>%
     filter(imdb_votes < 1000000 | is.na(imdb_votes)) %>%
     mutate(
       pc_clean = str_remove_all(production_countries, "\\[|\\]|'") %>% str_squish(),
@@ -316,10 +339,21 @@ preprocesar_titles <- function(df, top_paises = NULL) {
   return(df)
 }
 
+train_indices <- sample(1:nrow(master_df_raw), size = 0.8 * nrow(master_df_raw))
 
-nice_df <- preprocesar_titles(titles_train)
+train_raw <- master_df_raw[train_indices, ]
+test_raw  <- master_df_raw[-train_indices, ]
 
-unique(nice_df$primary_pc)
+medianas_imputacion <- list(
+  runtime = median(train_raw$runtime, na.rm = TRUE),
+  imdb_votes = median(train_raw$imdb_votes, na.rm = TRUE)
+)
+
+train_data <- preprocesar_df(train_raw, valores_imputacion = medianas_imputacion)
+# Capturar los países principales del conjunto de entrenamiento
+top_paises_from_train <- levels(train_data$primary_pc)
+test_data <- preprocesar_df(test_raw, top_paises = top_paises_from_train, valores_imputacion = medianas_imputacion)
+
 
 # PRIMER MODELO
 candidate_1 <- lm(imdb_score ~ 
@@ -337,29 +371,22 @@ candidate_1 <- lm(imdb_score ~
                   + is_scifi         
                   + is_thriller  
                   + primary_pc
-                  + age_certification, data = nice_df)
-
-summary(candidate_1)
-
-mse_1 <- mean(resid(candidate_1)^2)
-mse_1
+                  + age_certification
+                  + num_actors
+                  + num_directors, data = train_data)
 
 # SEGUNDO MODELO
 fixed  <- "log1p(imdb_votes) + runtime + (1 + log1p(imdb_votes) | primary_pc) + (1|release_year)"
 fixed2 <- paste0(fixed,
                  " + is_action + is_animation + is_comedy + is_documentation",
                  " + is_drama + is_horror + is_romance + is_scifi + is_thriller",
-                 " + age_certification")
+                 " + age_certification + num_actors + num_directors")
 
 candidate_2 <- lmer(
   formula = as.formula(paste("imdb_score ~", fixed2)),
-  data    = nice_df,
+  data    = train_data,
   REML    = TRUE
 )
-summary(candidate_2)
-
-mse_2 <- mean(resid(candidate_2)^2)
-mse_2
 
 # TERCER MODELO
 
@@ -368,24 +395,30 @@ candidate_3 <- gam(
   imdb_score ~ s(log1p(imdb_votes), k = 30)
   + s(runtime,           k = 10) +
   + s(release_year, k = 30)
+  + s(num_actors, k=10)
   + type
   + is_action + is_animation + is_comedy + is_documentation
   + is_drama  + is_horror    + is_romance     + is_scifi 
   + is_thriller
   + primary_pc
   + age_certification,
-  data   = nice_df,
+  data   = train_data,
   method = "REML"
 )
 
-summary(candidate_3)
+# Predicciones para cada modelo
+pred_1 <- predict(candidate_1, newdata = test_data)
+pred_2 <- predict(candidate_2, newdata = test_data, allow.new.levels=TRUE) 
+pred_3 <- predict(candidate_3, newdata = test_data)
 
-mse_3 <- mean(residuals(candidate_3)^2)
-mse_3
+# Cálculo del MSE de Testeo
+mse_test_1 <- mean((test_data$imdb_score - pred_1)^2, na.rm = TRUE)
+mse_test_2 <- mean((test_data$imdb_score - pred_2)^2, na.rm = TRUE)
+mse_test_3 <- mean((test_data$imdb_score - pred_3)^2, na.rm = TRUE)
 
 my_list <- list(
   row1 = c("Modelo 1 (lm FE)", "RE Model",    "Splines"),
-  row2 = c(              mse_1,        mse_2,        mse_3)
+  row2 = c(              mse_test_1,        mse_test_2,        mse_test_3)
 )
 
 print(my_list)
@@ -393,14 +426,57 @@ print(my_list)
 
 # EJERCICIO 6 ==================================================================
 
+# Reentrenamos el modelo GAM pero con todos los datos disponibles
+
+medianas_imputacion <- list(
+  runtime = median(master_df_raw$runtime, na.rm = TRUE),
+  imdb_votes = median(master_df_raw$imdb_votes, na.rm = TRUE)
+)
+
+train_data_final <- preprocesar_df(master_df_raw, valores_imputacion = medianas_imputacion)
+
+top_paises_final <- levels(train_data_final$primary_pc)
+
+model_final_gam <- gam(
+  imdb_score ~ s(log1p(imdb_votes), k = 30)
+  + s(runtime,           k = 10)
+  + s(release_year,      k = 30)
+  + s(num_actors,        k = 10)
+  + type
+  + is_action 
+  + is_animation 
+  + is_comedy 
+  + is_documentation
+  + is_drama  
+  + is_horror    
+  + is_romance     
+  + is_scifi 
+  + is_thriller
+  + primary_pc
+  + age_certification,
+  data   = train_data_final,
+  method = "REML"
+)
+
+
 titles_test <- read.csv("titles_test.csv")
 
-niveles_train <- levels(nice_df$primary_pc)
+titles_test <- titles_test %>%
+  left_join(actor_counts, by = "id") %>%
+  left_join(director_counts, by = "id") %>%
+  mutate(
+    num_actors = ifelse(is.na(num_actors), 0, num_actors),
+    num_directors = ifelse(is.na(num_directors), 0, num_directors)
+  )
 
-titles_test_df <- preprocesar_titles(titles_test,top_paises = niveles_train)
+test_data <- preprocesar_df(titles_test, top_paises = top_paises_final, valores_imputacion = medianas_imputacion)
 
-# Modelo con splines
-pred_gam <- predict(candidate_3, newdata = titles_test_df)
+predicciones_finales <- predict(model_final_gam, newdata = test_data)
 
-write.table(pred_gam, file = "predicciones.csv", row.names = FALSE, col.names = FALSE, sep = ",")
-
+write.table(
+  predicciones_finales, 
+  file = "predicciones.csv", 
+  row.names = FALSE, 
+  col.names = FALSE, 
+  sep = ","
+)
